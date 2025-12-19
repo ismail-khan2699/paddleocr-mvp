@@ -1,4 +1,4 @@
-FROM paddlepaddle/paddle:2.6.1-gpu-cuda11.7-cudnn8.4-trt8.4
+FROM python:3.12-slim
 
 WORKDIR /app
 
