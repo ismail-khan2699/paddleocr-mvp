@@ -83,55 +83,116 @@ async def process_image_file(file: UploadFile):
 def parse_ocr_results(result, confidence_threshold: float = 0.0):
     """Parse PaddleOCR results and return normalized, sorted results."""
     ocr_results = []
-    if result:
-        # PaddleOCR returns a list, where result[0] contains the detections
-        detections = result[0] if isinstance(result, list) and len(result) > 0 and result[0] is not None else []
-        
-        for detection in detections:
-            try:
-                if not detection:
-                    continue
-                
-                # Handle different result structures:
-                # Format 1: [bbox, (text, confidence)]
-                # Format 2: [bbox, text, confidence]
-                if len(detection) == 2:
-                    # Format 1: [bbox, (text, confidence)]
-                    bbox = detection[0]
-                    text_info = detection[1]
-                    
-                    if isinstance(text_info, (list, tuple)) and len(text_info) == 2:
-                        text, confidence = text_info[0], text_info[1]
-                    else:
-                        # Fallback: treat as text only
-                        text = str(text_info)
-                        confidence = 1.0
-                        
-                elif len(detection) == 3:
-                    # Format 2: [bbox, text, confidence]
-                    bbox, text, confidence = detection[0], detection[1], detection[2]
-                else:
-                    # Unknown format, skip
-                    continue
+    
+    if not result:
+        return ocr_results
+
+    # Handle new PaddleOCR/PaddleX result format (dict-like object with 'rec_texts', 'dt_polys', etc.)
+    # In newer versions, result is [OCRResult] where OCRResult behaves like a dict
+    is_new_format = False
+    if isinstance(result, list) and len(result) > 0:
+        first_item = result[0]
+        # Check if it has the keys specific to the new format
+        try:
+            if hasattr(first_item, '__getitem__') and 'rec_texts' in first_item and 'dt_polys' in first_item:
+                is_new_format = True
+        except (TypeError, AttributeError):
+            pass
+            
+    if is_new_format:
+        try:
+            item = result[0]
+            rec_texts = item['rec_texts']
+            rec_scores = item['rec_scores']
+            dt_polys = item['dt_polys']
+            
+            for i in range(len(rec_texts)):
+                text = rec_texts[i]
+                confidence = rec_scores[i]
+                bbox = dt_polys[i]
                 
                 # Ensure confidence is numeric
                 try:
                     confidence = float(confidence)
                 except (ValueError, TypeError):
                     confidence = 1.0
-                
+                    
                 if confidence >= confidence_threshold:
-                    # Normalize text: trim junk and normalize whitespace
                     normalized_text = " ".join(str(text).split())
+                    
+                    # Handle bbox (numpy array)
+                    if hasattr(bbox, 'tolist'):
+                        bbox_list = bbox.tolist()
+                    else:
+                        bbox_list = bbox
+                    
+                    # Ensure bbox points are floats
+                    bbox_formatted = [[float(p) for p in point] for point in bbox_list]
                     
                     ocr_results.append({
                         "text": normalized_text,
                         "confidence": float(confidence),
-                        "bbox": [[float(point[0]), float(point[1])] for point in bbox]
+                        "bbox": bbox_formatted
                     })
-            except (ValueError, TypeError, IndexError) as e:
-                # Skip malformed detections
-                continue
+        except Exception as e:
+            print(f"Error parsing new format: {e}")
+            # Fall through to try old format
+            pass
+
+    # Handle legacy PaddleOCR format
+    if not ocr_results and result:
+        # PaddleOCR returns a list, where result[0] contains the detections
+        detections = result[0] if isinstance(result, list) and len(result) > 0 and result[0] is not None else []
+        
+        # If detections is the dict-like OCRResult (new format) but we fell through, 
+        # iterating it will yield keys (strings), which won't match the old format logic below.
+        # So we verify it's a list before iterating for old format.
+        if isinstance(detections, list):
+            for detection in detections:
+                try:
+                    if not detection:
+                        continue
+                    
+                    # Handle different result structures:
+                    # Format 1: [bbox, (text, confidence)]
+                    # Format 2: [bbox, text, confidence]
+                    if len(detection) == 2:
+                        # Format 1: [bbox, (text, confidence)]
+                        bbox = detection[0]
+                        text_info = detection[1]
+                        
+                        if isinstance(text_info, (list, tuple)) and len(text_info) == 2:
+                            text, confidence = text_info[0], text_info[1]
+                        else:
+                            # Fallback: treat as text only
+                            text = str(text_info)
+                            confidence = 1.0
+                            
+                    elif len(detection) == 3:
+                        # Format 2: [bbox, text, confidence]
+                        bbox, text, confidence = detection[0], detection[1], detection[2]
+                    else:
+                        # Unknown format, skip
+                        continue
+                    
+                    # Ensure confidence is numeric
+                    try:
+                        confidence = float(confidence)
+                    except (ValueError, TypeError):
+                        confidence = 1.0
+                    
+                    if confidence >= confidence_threshold:
+                        # Normalize text: trim junk and normalize whitespace
+                        normalized_text = " ".join(str(text).split())
+                        
+                        ocr_results.append({
+                            "text": normalized_text,
+                            "confidence": float(confidence),
+                            "bbox": [[float(point[0]), float(point[1])] for point in bbox]
+                        })
+                except (ValueError, TypeError, IndexError) as e:
+                    # Skip malformed detections
+                    continue
     
     # Sort results top-to-bottom, left-to-right (by y-coordinate first, then x-coordinate)
     ocr_results.sort(key=lambda x: (x["bbox"][0][1], x["bbox"][0][0]))
