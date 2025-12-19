@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir \
     pillow \
     numpy
 
+COPY download_models.py .
+RUN python download_models.py && rm download_models.py
+
 COPY app.py .
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
