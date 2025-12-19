@@ -15,6 +15,7 @@ app = FastAPI(title="PaddleOCR Service", version="1.0.0")
 ocr = PaddleOCR(
     use_angle_cls=True,
     lang='en',
+    use_gpu=True,
 ) 
 
 
@@ -311,5 +312,7 @@ async def ocr_raw_endpoint(file: UploadFile = File(...)):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 

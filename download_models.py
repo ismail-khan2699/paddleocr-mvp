@@ -9,7 +9,8 @@ print("Downloading PaddleOCR models...")
 # Initialize PaddleOCR to trigger model download
 ocr = PaddleOCR(
     use_angle_cls=True,
-    lang='en'
+    lang='en',
+    use_gpu=False
 )
 
 # Run a dummy inference to ensure everything is loaded/compiled
