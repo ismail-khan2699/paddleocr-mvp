@@ -188,7 +188,6 @@ def parse_ocr_results(result, confidence_threshold: float = 0.0):
                         ocr_results.append({
                             "text": normalized_text,
                             "confidence": float(confidence),
-                            "bbox": [[float(point[0]), float(point[1])] for point in bbox]
                         })
                 except (ValueError, TypeError, IndexError) as e:
                     # Skip malformed detections
